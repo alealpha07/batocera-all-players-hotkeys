@@ -1,0 +1,71 @@
+#!/bin/bash
+
+SERVICE_NAME="all_players_hotkeys"
+INSTALL_DIR="/userdata/system/all-players-hotkeys"
+RUN_DIR="/var/run/all-players-hotkeys"
+USER_KEYS_FILE="/userdata/system/configs/hotkeys.keys"
+SYSTEM_KEYS_FILE="/usr/share/evmapy/hotkeys.keys"
+LOG_FILE="/userdata/system/logs/all-players-hotkeys.log"
+
+log() { echo "$(date '+%F %T') | $*" >>"$LOG_FILE"; }
+
+keys_file_in_use() {
+    if [ -f "$USER_KEYS_FILE" ]; then
+        echo "$USER_KEYS_FILE"
+    else
+        echo "$SYSTEM_KEYS_FILE"
+    fi
+}
+
+mounted_keys_file() {
+    awk -v user_file="$USER_KEYS_FILE" -v system_file="$SYSTEM_KEYS_FILE" \
+        '$2 == user_file || $2 == system_file { print $2; exit }' /proc/mounts
+}
+
+start_service() {
+    if [ -n "$(mounted_keys_file)" ]; then
+        return 0
+    fi
+    local keys_file
+    keys_file="$(keys_file_in_use)"
+    mkdir -p "$RUN_DIR" || return 1
+    if ! python "$INSTALL_DIR/all-players-hotkeys-generate" "$keys_file" "$RUN_DIR/hotkeys.keys" 2>>"$LOG_FILE"; then
+        log "start failed: could not generate from $keys_file"
+        return 1
+    fi
+    if mount --bind "$RUN_DIR/hotkeys.keys" "$keys_file"; then
+        log "started on $keys_file"
+    else
+        log "start failed: could not bind $keys_file"
+        return 1
+    fi
+}
+
+stop_service() {
+    local keys_file
+    keys_file="$(mounted_keys_file)"
+    if [ -z "$keys_file" ]; then
+        return 0
+    fi
+    umount "$keys_file" || umount -l "$keys_file"
+    log "stopped"
+}
+
+status_service() {
+    if [ -n "$(mounted_keys_file)" ]; then
+        echo "${SERVICE_NAME}: running"
+    else
+        echo "${SERVICE_NAME}: stopped"
+    fi
+}
+
+case "${1-}" in
+    start) start_service ;;
+    stop) stop_service ;;
+    restart) stop_service; start_service ;;
+    status) status_service ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac

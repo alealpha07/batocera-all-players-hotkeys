@@ -1,0 +1,29 @@
+#!/usr/bin/python
+import copy
+import json
+import sys
+
+MAX_PLAYERS = 8
+
+
+def with_all_players(keys_config):
+    player1_actions = keys_config["actions_player1"]
+    for player_number in range(2, MAX_PLAYERS + 1):
+        keys_config.setdefault(f"actions_player{player_number}", copy.deepcopy(player1_actions))
+    return keys_config
+
+
+def main():
+    if len(sys.argv) != 3:
+        sys.exit(f"usage: {sys.argv[0]} <source hotkeys.keys> <output hotkeys.keys>")
+    source_path, output_path = sys.argv[1], sys.argv[2]
+
+    with open(source_path) as source_file:
+        keys_config = json.load(source_file)
+
+    with open(output_path, "w") as output_file:
+        json.dump(with_all_players(keys_config), output_file, indent=4)
+
+
+if __name__ == "__main__":
+    main()
